@@ -22,30 +22,20 @@ MotorMode_t motorMode = m_fdc;
 MotorMode_t motorModePrev = m_fdc;
 
 const bool ENABLE_MODO_BORDA = true;
-// VELOCIDADE GERAL (menor valor em us = mais rapido).
-// Exemplo: 1200 -> 900 aumenta velocidade.
 const unsigned int MOTOR_VEL_BAIXA_US = 1200;
-// VELOCIDADE DO MODO FIM DE CURSO (m_fdc).
-// Ajuste aqui se quiser o fim de curso mais rapido sem alterar os outros modos.
-const unsigned int MOTOR_VEL_FDC_US = 1600;
 const float BORDA_VARIACAO_PCT = 0.10;
-// ALTERE AQUI para quantidade de pontos por varredura.
-// Exemplo: 20 => envia x0..x19 (desde que ajuste tambem o formato do pacote abaixo).
-const int MOV_SEGMENTOS = 10;
+const int MOV_SEGMENTOS = 20;
 const int MOV_STEPS_10CM = 1600; // Ajuste conforme seu conjunto motor/fuso/correia
 const unsigned long MOV_MEDICAO_MS = 10000;
 
 bool systemActive = false;
 float bordaBase = 0;
 bool bordaBaseReady = false;
-float bordaBaseSoma = 0;
-int bordaBaseAmostras = 0;
-unsigned long bordaBaseStartMs = 0;
-
-const unsigned long BORDA_BASE_TEMPO_MS = 1200;
-const int BORDA_BASE_MIN_AMOSTRAS = 3;
 
 extern float mediaSensor2;
+extern float somaMedidas;
+extern int contadorMedidas;
+extern unsigned long inicioMedia_s2;
 
 float x_ida[MOV_SEGMENTOS] = {0};
 float x_volta[MOV_SEGMENTOS] = {0};
@@ -172,7 +162,6 @@ void moverTrechoSteps(int dir, int steps) {
     if (!podeMoverDir(dir)) {
       break;
     }
-    // ALTERE AQUI (MOTOR_VEL_BAIXA_US) para velocidade dos deslocamentos do modo movimento.
     motor_step_once(dir, MOTOR_VEL_BAIXA_US);
   }
 }
@@ -200,15 +189,15 @@ float medirLaserPorTempo(unsigned long duracaoMs) {
 }
 
 void enviarPacoteMovimento(const char *tag, float *dados) {
-  // ALTERE AQUI para 20 valores:
-  // 1) Troque a string para ter 20 "%.1f" (hoje tem 10).
-  // 2) Troque a lista dados[0]..dados[9] para dados[0]..dados[19].
-  // Dica: mantendo MOV_SEGMENTOS=20, os vetores x_ida/x_volta ja acompanham automaticamente.
   snprintf(txpacket, BUFFER_SIZE,
-           "MOV %s %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f",
+           "MOV %s %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f",
            tag,
            dados[0], dados[1], dados[2], dados[3], dados[4],
-           dados[5], dados[6], dados[7], dados[8], dados[9]);
+           dados[5], dados[6], dados[7], dados[8], dados[9],
+           dados[10], dados[11], dados[12], dados[13], dados[14],
+           dados[15], dados[16], dados[17], dados[18], dados[19]);
+
+
 
   Serial.println(txpacket);
   Radio.Send((uint8_t *)txpacket, strlen(txpacket));
@@ -239,20 +228,19 @@ void motor_update() {
       systemActive = false;
       bordaBaseReady = false;
       bordaBase = 0;
-      bordaBaseSoma = 0;
-      bordaBaseAmostras = 0;
-      bordaBaseStartMs = 0;
     } else {
       systemActive = true;
 
+      // === LIMPEZA DO SENSOR AO ENTRAR NO MODO BORDA ===
       if (motorMode == m_brd) {
-        // Recalibra a base da borda ao entrar no modo para evitar leitura antiga.
         bordaBaseReady = false;
         bordaBase = 0;
-        bordaBaseSoma = 0;
-        bordaBaseAmostras = 0;
-        bordaBaseStartMs = millis();
+        mediaSensor2 = 0;
+        somaMedidas = 0;
+        contadorMedidas = 0;
+        inicioMedia_s2 = millis();
       }
+      // ==================================================
     }
     motorModePrev = motorMode;
   }
@@ -261,8 +249,7 @@ void motor_update() {
     // Modo fim de curso: tudo desligado, procura fim de curso da direita (sw1Pin)
     systemActive = false;
     if (podeMoverDir(1)) {
-      // ALTERE AQUI (MOTOR_VEL_FDC_US) para acelerar/desacelerar apenas o fim de curso.
-      motor_step_once(1, MOTOR_VEL_FDC_US);
+      motor_step_once(1, MOTOR_VEL_BAIXA_US);
     } else {
       motorMode = ENABLE_MODO_BORDA ? m_brd : m_mov;
     }
@@ -272,41 +259,20 @@ void motor_update() {
   else if (motorMode == m_brd) {
     systemActive = true;
 
-    if (!bordaBaseReady) {
-      if (mediaSensor2 > 0) {
-        bordaBaseSoma += mediaSensor2;
-        bordaBaseAmostras++;
-      }
-
-      if ((millis() - bordaBaseStartMs) >= BORDA_BASE_TEMPO_MS && bordaBaseAmostras >= BORDA_BASE_MIN_AMOSTRAS) {
-        bordaBase = bordaBaseSoma / bordaBaseAmostras;
-        bordaBaseReady = true;
-        Serial.print("BRD base=");
-        Serial.print(bordaBase, 1);
-        Serial.print(" limiar=");
-        Serial.println(bordaBase * (1.0 - BORDA_VARIACAO_PCT), 1);
-      }
-
-      // Aguarda estabilizar base antes de procurar a borda.
-      return;
+    if (!bordaBaseReady && mediaSensor2 > 0) {
+      bordaBase = mediaSensor2;
+      bordaBaseReady = true;
     }
 
     bool bordaDetectada = false;
-    float bordaLimiar = bordaBase * (1.0 - BORDA_VARIACAO_PCT);
-    if (mediaSensor2 > 0) {
-      if (mediaSensor2 <= bordaLimiar) {
+    if (bordaBaseReady && mediaSensor2 > 0) {
+      if (mediaSensor2 <= (bordaBase * (1.0 - BORDA_VARIACAO_PCT))) {
         bordaDetectada = true;
       }
-
-      Serial.print("BRD leitura=");
-      Serial.print(mediaSensor2, 1);
-      Serial.print(" limiar=");
-      Serial.println(bordaLimiar, 1);
     }
 
     if (!bordaDetectada) {
       if (podeMoverDir(0)) {
-        // ALTERE AQUI (MOTOR_VEL_BAIXA_US) se quiser mudar a velocidade do modo borda.
         motor_step_once(0, MOTOR_VEL_BAIXA_US);
       }
     } else {
@@ -326,11 +292,11 @@ void motor_update() {
     motorMode = m_fdc;
   }
 
-  // Serial.print(digitalRead(sw1Pin));
-  // Serial.print(" ");
-  // Serial.print(digitalRead(sw2Pin));
-  // Serial.print(" ");
-  // Serial.println(vel);
+  Serial.print(digitalRead(sw1Pin));
+  Serial.print(" ");
+  Serial.print(digitalRead(sw2Pin));
+  Serial.print(" ");
+  Serial.println(vel);
   
 
 
