@@ -24,7 +24,7 @@ MotorMode_t motorModePrev = m_fdc;
 const bool ENABLE_MODO_BORDA = true;
 const unsigned int MOTOR_VEL_BAIXA_US = 1200;
 const float BORDA_VARIACAO_PCT = 0.10;
-const int MOV_SEGMENTOS = 20;
+const int MOV_SEGMENTOS = 3;
 const int MOV_STEPS_10CM = 1600; // Ajuste conforme seu conjunto motor/fuso/correia
 const unsigned long MOV_MEDICAO_MS = 10000;
 
@@ -192,6 +192,7 @@ void enviarPacoteMovimento(const char *tag, float *dados) {
   snprintf(txpacket, BUFFER_SIZE,
            "MOV %s %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f",
            tag,
+          //  dados[0], dados[1], dados[2]);
            dados[0], dados[1], dados[2], dados[3], dados[4],
            dados[5], dados[6], dados[7], dados[8], dados[9],
            dados[10], dados[11], dados[12], dados[13], dados[14],
