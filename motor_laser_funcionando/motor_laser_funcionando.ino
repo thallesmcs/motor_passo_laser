@@ -24,10 +24,12 @@ MotorMode_t motorModePrev = m_fdc;
 const bool ENABLE_MODO_BORDA = true;
 const unsigned int MOTOR_VEL_BAIXA_US = 1200;
 const float BORDA_VARIACAO_PCT = 0.10;
-const int MOV_SEGMENTOS = 20;
+const int MOV_SEGMENTOS = 30;
 // const int MOV_STEPS_10CM = 1600; // 30 mm por trecho
 const int MOV_STEPS_10CM = 1355; // 25,4 mm por trecho
-const unsigned long MOV_MEDICAO_MS = 10000;
+const unsigned long MOV_MEDICAO_MS = 5000; // Tempo que o sensor fica parado medindo e no final faz a media
+float MED_DIF = 0;
+
 
 bool systemActive = false;
 float bordaBase = 0;
@@ -191,17 +193,19 @@ float medirLaserPorTempo(unsigned long duracaoMs) {
 
 void enviarPacoteMovimento(const char *tag, float *dados) {
   snprintf(txpacket, BUFFER_SIZE,
-           "MOV %s %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f",
+           "MOV %s %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f",
+          // "MOV %s %.1f %.1f %.1f",
+
            tag,
           //  dados[0], dados[1], dados[2]);
            dados[0], dados[1], dados[2], dados[3], dados[4],
            dados[5], dados[6], dados[7], dados[8], dados[9],
            dados[10], dados[11], dados[12], dados[13], dados[14],
-           dados[15], dados[16], dados[17], dados[18], dados[19]);
+           dados[15], dados[16], dados[17], dados[18], dados[19],
+           dados[20], dados[21], dados[22], dados[23], dados[24],
+           dados[25], dados[26], dados[27], dados[28], dados[29]);
 
-
-
-  Serial.println(txpacket);
+  // Serial.println(txpacket);
   Radio.Send((uint8_t *)txpacket, strlen(txpacket));
   state = LOWPOWER;
 }
@@ -260,6 +264,7 @@ void motor_update() {
   // ===== MODO BORDA (pode comentar este bloco se nao quiser usar) =====
   else if (motorMode == m_brd) {
     systemActive = true;
+    MED_DIF = 1000;
 
     if (!bordaBaseReady && mediaSensor2 > 0) {
       bordaBase = mediaSensor2;
@@ -285,6 +290,9 @@ void motor_update() {
   else if (motorMode == m_mov) {
     // Modo movimento: 10 trechos de 30 mm (ida), envia; repete inverso (volta), envia
     systemActive = true;
+
+    MED_DIF = 20000 - 50;
+
     executarVarreduraMovimento(0, x_ida);
     enviarPacoteMovimento("Espessura", x_ida);
 
@@ -414,7 +422,7 @@ float converterParaMM(float valor) {
 void sensor2_update() {
   tempoAtual_s2 = millis();
 
-  if (tempoAtual_s2 - tempoAnterior_s2 >= 33) {
+  if (tempoAtual_s2 - tempoAnterior_s2 >= 100) {
     tempoAnterior_s2 = tempoAtual_s2;
 
     // leitura = pulseIn(espessuraPin, HIGH, 20000);
@@ -424,7 +432,7 @@ void sensor2_update() {
     contadorMedidas++;
   }
 
-  if (tempoAtual_s2 - inicioMedia_s2 >= 1000) {
+  if (tempoAtual_s2 - inicioMedia_s2 >= MED_DIF) {
     inicioMedia_s2 = tempoAtual_s2;
     mediaSensor2 = somaMedidas / contadorMedidas;
 
