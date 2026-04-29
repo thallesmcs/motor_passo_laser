@@ -24,8 +24,9 @@ MotorMode_t motorModePrev = m_fdc;
 const bool ENABLE_MODO_BORDA = true;
 const unsigned int MOTOR_VEL_BAIXA_US = 1200;
 const float BORDA_VARIACAO_PCT = 0.10;
-const int MOV_SEGMENTOS = 3;
-const int MOV_STEPS_10CM = 1600; // Ajuste conforme seu conjunto motor/fuso/correia
+const int MOV_SEGMENTOS = 20;
+// const int MOV_STEPS_10CM = 1600; // 30 mm por trecho
+const int MOV_STEPS_10CM = 1355; // 25,4 mm por trecho
 const unsigned long MOV_MEDICAO_MS = 10000;
 
 bool systemActive = false;
@@ -282,22 +283,24 @@ void motor_update() {
   }
 
   else if (motorMode == m_mov) {
-    // Modo movimento: 10 trechos de 10 cm (ida), envia; repete inverso (volta), envia
+    // Modo movimento: 10 trechos de 30 mm (ida), envia; repete inverso (volta), envia
     systemActive = true;
     executarVarreduraMovimento(0, x_ida);
-    enviarPacoteMovimento("IDA", x_ida);
+    enviarPacoteMovimento("Espessura", x_ida);
 
-    executarVarreduraMovimento(1, x_volta);
-    enviarPacoteMovimento("VOLTA", x_volta);
+    // ===== VOLTA COM MEDICAO (DESABILITADA) =====
+    // executarVarreduraMovimento(1, x_volta);
+    // enviarPacoteMovimento("VOLTA", x_volta);
+    // ===========================================
 
     motorMode = m_fdc;
   }
 
-  Serial.print(digitalRead(sw1Pin));
-  Serial.print(" ");
-  Serial.print(digitalRead(sw2Pin));
-  Serial.print(" ");
-  Serial.println(vel);
+  // Serial.print(digitalRead(sw1Pin));
+  // Serial.print(" ");
+  // Serial.print(digitalRead(sw2Pin));
+  // Serial.print(" ");
+  // Serial.println(vel);
   
 
 
@@ -536,19 +539,25 @@ void loop() {
 
   // Atualiza motor e sensores
   motor_update();
+  
+  // Atualiza sempre
+  sensor1_update();
+
+
   if (systemActive && (motorMode != m_mov)) {
-    sensor1_update();
     sensor2_update();
   }
 
   // Envia pacote LoRa a cada 5 segundos
   static unsigned long lastSendTime = 0;
-  if (systemActive && (millis() - lastSendTime) > timeMovelPackage) {
+  // if (systemActive && (millis() - lastSendTime) > timeMovelPackage) {
+  if ((millis() - lastSendTime) > timeMovelPackage) {
     lastSendTime = millis();
     txNumber++;
 
-    sprintf(txpacket, "F 1 %.1f %.1f", mediaSensor2, Deform_pc);
-    Serial.println(txpacket);
+    // sprintf(txpacket, "F 1 %.1f %.1f", mediaSensor2, Deform_pc); // Envia os dois sensores
+    sprintf(txpacket, "Elongamento %.1f", Deform_pc); // Envia apenas o sensor de elongamento
+    // Serial.println(txpacket);
 
     unsigned long T_Lora1 = millis();
     Radio.Send((uint8_t *)txpacket, strlen(txpacket));
